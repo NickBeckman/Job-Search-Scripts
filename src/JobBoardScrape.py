@@ -25,34 +25,89 @@ def classify_job_title(title):
 
 def scrape_cdw_jobs():
     url = "https://www.cdwjobs.com/search/jobs"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Referer": "https://www.cdwjobs.com/",
+        "Connection": "keep-alive",
+    }
     response = requests.get(url, headers=headers)
-
+    
+    print(f"Response status: {response.status_code}")
+    print(f"Response URL: {response.url}")
+    
     soup = BeautifulSoup(response.text, "html.parser")
     
-    # Look for job listings - try different selectors
-    job_elements = soup.find_all("div", class_="job-listing") or \
-                   soup.find_all("div", class_="job-card") or \
-                   soup.find_all("div", class_="search-result") or \
-                   soup.find_all("a", class_="jobTitle-link") or \
-                   soup.find_all("div", class_="job-item")
+    # Debug: Print some of the HTML to see the structure
+    print("First 1000 characters of HTML:")
+    print(response.text[:1000])
     
-    print(f"Found {len(job_elements)} job elements. Extracting job details...")
+    # Try multiple approaches to find job listings
+    job_elements = []
+    
+    # Method 1: Look for common job listing selectors
+    selectors = [
+        "div[class*='job']",
+        "div[class*='listing']", 
+        "div[class*='card']",
+        "div[class*='result']",
+        "a[class*='job']",
+        "li[class*='job']",
+        "article[class*='job']"
+    ]
+    
+    for selector in selectors:
+        elements = soup.select(selector)
+        if elements:
+            print(f"Found {len(elements)} elements with selector: {selector}")
+            job_elements.extend(elements)
+            break
+    
+    # Method 2: Look for any elements containing job-related text
+    if not job_elements:
+        all_divs = soup.find_all("div")
+        for div in all_divs:
+            text = div.get_text().lower()
+            if any(keyword in text for keyword in ["engineer", "manager", "specialist", "analyst", "developer", "coordinator"]):
+                job_elements.append(div)
+                print(f"Found potential job div: {div.get_text()[:100]}")
+    
+    print(f"Total found: {len(job_elements)} job elements")
     
     job_listings = []
     
-    for job in job_elements:
+    for i, job in enumerate(job_elements[:10]):  # Limit to first 10 for debugging
+        print(f"\n--- Job Element {i+1} ---")
+        print(f"Tag: {job.name}")
+        print(f"Classes: {job.get('class', [])}")
+        print(f"Text preview: {job.get_text()[:200]}")
+        
         # Try to extract job title and location
-        title_elem = job.find("h3") or job.find("h2") or job.find("a") or job.find("span", class_="job-title")
-        location_elem = job.find("span", class_="location") or job.find("div", class_="location") or job.find("span", class_="job-location")
+        title = "Unknown Title"
+        location = "Unknown Location"
         
-        title = title_elem.text.strip() if title_elem else "Unknown Title"
-        location = location_elem.text.strip() if location_elem else "Unknown Location"
+        # Look for title in various elements
+        title_candidates = job.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "a", "span", "div"])
+        for candidate in title_candidates:
+            text = candidate.get_text().strip()
+            if len(text) > 5 and len(text) < 100:  # Reasonable title length
+                if any(keyword in text.lower() for keyword in ["engineer", "manager", "specialist", "analyst", "developer", "coordinator", "administrator"]):
+                    title = text
+                    break
         
-        if title and title != "Unknown Title":
+        # Look for location
+        location_candidates = job.find_all(["span", "div", "p"])
+        for candidate in location_candidates:
+            text = candidate.get_text().strip()
+            if "," in text and any(keyword in text.lower() for keyword in ["united states", "canada", "uk", "london", "chicago", "montreal"]):
+                location = text
+                break
+        
+        if title != "Unknown Title":
             job_info = f"{title}{location}"
             job_listings.append(job_info)
-            print(job_info)
+            print(f"Extracted: {job_info}")
     
     return job_listings
 
